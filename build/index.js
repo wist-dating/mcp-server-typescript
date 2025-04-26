@@ -1,6 +1,11 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import express from "express";
 import { z } from "zod";
+import { randomUUID } from 'crypto';
+import https from 'https';
+import fs from 'fs';
+import path from 'path';
 const NWS_API_BASE = "https://api.weather.gov";
 const USER_AGENT = "weather-app/1.0";
 // Create server instance
@@ -150,12 +155,38 @@ server.tool("get-forecast", "Get weather forecast for a location", {
         ],
     };
 });
-async function main() {
-    const transport = new StdioServerTransport();
+// Create Express app
+const app = express();
+app.use(express.json());
+// Set up HTTP endpoints for MCP
+app.post('/mcp', async (req, res) => {
+    const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID()
+    });
     await server.connect(transport);
-    console.error("Weather MCP Server running on stdio");
-}
-main().catch((error) => {
-    console.error("Fatal error in main():", error);
-    process.exit(1);
+    await transport.handleRequest(req, res, req.body);
+});
+app.get('/mcp', async (req, res) => {
+    const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID()
+    });
+    await server.connect(transport);
+    await transport.handleRequest(req, res);
+});
+app.delete('/mcp', async (req, res) => {
+    const transport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: () => randomUUID()
+    });
+    await server.connect(transport);
+    await transport.handleRequest(req, res);
+});
+// HTTPS configuration
+const httpsOptions = {
+    key: fs.readFileSync(path.join(process.cwd(), 'certs/key.pem')),
+    cert: fs.readFileSync(path.join(process.cwd(), 'certs/cert.pem')),
+};
+// Start the server with HTTPS
+const PORT = 3000;
+https.createServer(httpsOptions, app).listen(PORT, () => {
+    console.log(`Weather MCP Server running on https://localhost:${PORT}`);
 });
